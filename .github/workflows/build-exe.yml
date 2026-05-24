@@ -1,4 +1,4 @@
-name: Build LensDesigner EXE
+name: Build LensDesigner Pro EXE
 
 on:
   workflow_dispatch:
@@ -18,17 +18,25 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install dependencies
+      - name: Upgrade pip
         run: |
           python -m pip install --upgrade pip
-          pip install numpy cadquery pyinstaller
 
-      - name: Build EXE
+      - name: Install dependencies
         run: |
-          pyinstaller --noconfirm --onefile --windowed --name LensDesigner LensDesigner.py
+          pip install numpy matplotlib cadquery pyinstaller
+
+      - name: Build EXE onedir
+        run: |
+          pyinstaller ^
+            --noconfirm ^
+            --onedir ^
+            --windowed ^
+            --name LensDesignerPro ^
+            LensDesignerPro.py
 
       - name: Upload EXE artifact
         uses: actions/upload-artifact@v4
         with:
-          name: LensDesigner-Windows-EXE
-          path: dist/LensDesigner.exe
+          name: LensDesignerPro-Windows-Folder
+          path: dist/LensDesignerPro
