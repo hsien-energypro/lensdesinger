@@ -1,53 +1,22 @@
-# MICRO LED Lens Designer V10
+# LensDesigner Pro
 
-This GitHub project builds a Windows `LensDesigner.exe` using GitHub Actions.
+Windows desktop GUI for MICRO LED lens V10 design.
 
-## Files
+## Features
+- Parameter input
+- XZ air lens preview
+- XY output surface preview
+- Colored ground iso-illuminance simulation
+- Center-line platform curve
+- Export STEP/STL after simulation check
 
-- `LensDesigner.py` - Desktop UI and confirmed V10 CadQuery geometry.
-- `.github/workflows/build-exe.yml` - GitHub Actions workflow to build EXE.
+## Build EXE
+1. Upload files to GitHub.
+2. Go to Actions.
+3. Run `Build LensDesigner Pro EXE`.
+4. Download artifact `LensDesignerPro-Windows-Folder`.
+5. Extract ZIP.
+6. Keep the whole folder together.
+7. Run `LensDesignerPro.exe`.
 
-## V10 geometry rules
-
-Coordinate system:
-
-- X = 0 ~ L
-- Y = 0 ~ 40
-- Z = -30 ~ +30
-
-Confirmed default parameters:
-
-- L = 100
-- YH = 40
-- ZW = 60
-- La = 24
-- Lb = 44
-- Ra = 72
-- z_half = 18
-
-Do not revert to old wrong geometry:
-
-- no Y=-20~+20 main body
-- no separated two air holes
-- no fish-eye air hole
-- no wedge/boat shape
-- keep TIR cuts
-
-## How to build EXE
-
-1. Upload these files to a GitHub repository.
-2. Go to `Actions`.
-3. Choose `Build LensDesigner EXE`.
-4. Click `Run workflow`.
-5. Open the finished run.
-6. Download `LensDesigner-Windows-EXE`.
-7. Extract the ZIP, then run `LensDesigner.exe`.
-
-## App use
-
-1. Open `LensDesigner.exe`.
-2. Choose output folder.
-3. Click `Generate STEP / STL`.
-4. It exports:
-   - `micro_led_lens_v10.step`
-   - `micro_led_lens_v10.stl`
+Important: this project uses CadQuery. The EXE must be built in `onedir` mode. Do not copy only the EXE file.
