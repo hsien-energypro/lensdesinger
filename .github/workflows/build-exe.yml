@@ -27,11 +27,10 @@ jobs:
       - name: Build EXE onedir
         shell: pwsh
         run: |
-          $common = "--noconfirm --onedir --windowed --name LensDesignerPro --runtime-hook runtime_hook.py --collect-all cadquery --collect-all OCP --collect-all vtkmodules --collect-all casadi LensDesignerPro.py"
           if (Test-Path "icon.ico") {
-            pyinstaller --icon=icon.ico $common
+            pyinstaller --noconfirm --onedir --windowed --icon=icon.ico --name LensDesignerPro --runtime-hook runtime_hook.py --collect-all cadquery --collect-all OCP --collect-all vtkmodules --collect-all casadi LensDesignerPro.py
           } else {
-            pyinstaller $common
+            pyinstaller --noconfirm --onedir --windowed --name LensDesignerPro --runtime-hook runtime_hook.py --collect-all cadquery --collect-all OCP --collect-all vtkmodules --collect-all casadi LensDesignerPro.py
           }
 
       - name: Upload EXE artifact
