@@ -1,1 +1,1 @@
-V6 LOGO/UI 修正版。根目錄放 icon.ico，會套用 EXE 與視窗圖示。
+V7：補回 R1~R4；Simulation 自動輸出 PNG/TXT；STEP/STL 加時間戳；移除左下 ICON 說明；右上加入專利警示。
