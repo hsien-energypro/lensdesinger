@@ -1,5 +1,3 @@
-# runtime_hook.py
-# Helps CadQuery / CasADi / OCP DLL loading inside PyInstaller onedir builds.
 import os, sys
 base = getattr(sys, "_MEIPASS", os.path.dirname(sys.executable))
 paths = [base]

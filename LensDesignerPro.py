@@ -1,576 +1,133 @@
 # -*- coding: utf-8 -*-
-"""
-LensDesignerPro.py
-達源技術有限公司 透鏡成像產生器 - Confirmed V10 Geometry
-
-Features:
-- Clean desktop GUI
-- Parameter panel
-- XZ air lens preview
-- XY output surface preview
-- Ground iso-illuminance simulation
-- Center-line platform plot
-- Export STEP / STL after simulation check
-
-Confirmed coordinate system:
-X = 0 ~ L
-Y = 0 ~ 40
-Z = -30 ~ +30
-
-Confirmed V10 geometry baseline:
-L=100, YH=40, ZW=60
-La=24, Lb=44, Ra=72, z_half=18
-continuous XZ hourglass air lens
-P1~P5 XY output surface cut
-XY + XZ TIR cuts included
-"""
-
-import math
-import os
+import os, math, traceback
 import tkinter as tk
 from tkinter import filedialog, messagebox
-
 import numpy as np
-
 import matplotlib
 matplotlib.use("TkAgg")
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 
+APP_TITLE="達源技術有限公司 透鏡成像產生器"
+APP_BG="#101820"; PANEL_BG="#17212B"; CARD_BG="#1F2B38"
+TEXT_FG="#EAF2F8"; MUTED_FG="#AAB7C4"; ACCENT="#2F80ED"; GOOD="#27AE60"; BAD="#EB5757"; WARN="#F2C94C"
 try:
     import cadquery as cq
 except Exception as e:
-    cq = None
-    CADQUERY_ERROR = e
+    cq=None; CADQUERY_ERROR=e
 else:
-    CADQUERY_ERROR = None
+    CADQUERY_ERROR=None
 
-
-APP_BG = "#101820"
-PANEL_BG = "#17212B"
-CARD_BG = "#1F2B38"
-TEXT_FG = "#EAF2F8"
-MUTED_FG = "#AAB7C4"
-ACCENT = "#2F80ED"
-GOOD = "#27AE60"
-WARN = "#F2C94C"
-BAD = "#EB5757"
-
-
-class LensDesignerPro:
+class App:
     def __init__(self, root):
-        self.root = root
-        self.root.title("達源技術有限公司 透鏡成像產生器")
-        self.root.geometry("1360x850")
-        self.root.minsize(1220, 780)
-        self.root.configure(bg=APP_BG)
-
-        self.output_dir = tk.StringVar(value=os.path.abspath(os.getcwd()))
-
-        # Main geometry variables
-        self.vars = {
-            "L": tk.DoubleVar(value=100.0),
-            "YH": tk.DoubleVar(value=40.0),
-            "ZW": tk.DoubleVar(value=60.0),
-            "La": tk.DoubleVar(value=24.0),
-            "Lb": tk.DoubleVar(value=44.0),
-            "Ra": tk.DoubleVar(value=72.0),
-            "z_half": tk.DoubleVar(value=18.0),
-        }
-
-        # Output P1~P5 XY curve
-        self.pvars = {
-            "P1_X": tk.DoubleVar(value=78.0),  "P1_Y": tk.DoubleVar(value=0.0),
-            "P2_X": tk.DoubleVar(value=84.0),  "P2_Y": tk.DoubleVar(value=7.0),
-            "P3_X": tk.DoubleVar(value=90.0),  "P3_Y": tk.DoubleVar(value=18.0),
-            "P4_X": tk.DoubleVar(value=95.0),  "P4_Y": tk.DoubleVar(value=30.0),
-            "P5_X": tk.DoubleVar(value=100.0), "P5_Y": tk.DoubleVar(value=39.0),
-        }
-
-        self.last_simulation_ok = False
-        self.build_ui()
-        self.run_simulation()
-
-    # ---------------- UI helpers ----------------
-    def label(self, parent, text, size=10, bold=False, fg=TEXT_FG, bg=None):
-        return tk.Label(
-            parent,
-            text=text,
-            font=("Segoe UI", size, "bold" if bold else "normal"),
-            fg=fg,
-            bg=bg if bg else PANEL_BG
-        )
-
-    def button(self, parent, text, command, bg=ACCENT, fg="white", width=16):
-        return tk.Button(
-            parent,
-            text=text,
-            command=command,
-            bg=bg,
-            fg=fg,
-            activebackground=bg,
-            activeforeground=fg,
-            relief="flat",
-            bd=0,
-            width=width,
-            height=2,
-            font=("Segoe UI", 10, "bold"),
-            cursor="hand2"
-        )
-
-    def entry_row(self, parent, row, name, var, unit="mm"):
-        self.label(parent, name, bg=CARD_BG, fg=MUTED_FG).grid(row=row, column=0, sticky="e", padx=6, pady=4)
-        e = tk.Entry(parent, textvariable=var, width=10, font=("Segoe UI", 10), justify="right")
-        e.grid(row=row, column=1, sticky="w", padx=6, pady=4)
-        self.label(parent, unit, bg=CARD_BG, fg=MUTED_FG).grid(row=row, column=2, sticky="w", padx=2, pady=4)
-        return e
-
+        self.root=root; self.root.title(APP_TITLE); self.root.geometry("1380x860"); self.root.configure(bg=APP_BG)
+        self.output_dir=tk.StringVar(value=os.path.abspath(os.getcwd()))
+        self.v={"L":tk.DoubleVar(value=100.0),"YH":tk.DoubleVar(value=40.0),"ZW":tk.DoubleVar(value=60.0),"La":tk.DoubleVar(value=24.0),"Lb":tk.DoubleVar(value=44.0),"Ra":tk.DoubleVar(value=72.0),"z_half":tk.DoubleVar(value=18.0)}
+        self.p={"P1X":tk.DoubleVar(value=78.0),"P1Y":tk.DoubleVar(value=0.0),"P2X":tk.DoubleVar(value=84.0),"P2Y":tk.DoubleVar(value=7.0),"P3X":tk.DoubleVar(value=90.0),"P3Y":tk.DoubleVar(value=18.0),"P4X":tk.DoubleVar(value=95.0),"P4Y":tk.DoubleVar(value=30.0),"P5X":tk.DoubleVar(value=100.0),"P5Y":tk.DoubleVar(value=39.0)}
+        self.auto_scale_p=tk.BooleanVar(value=True); self.last_L=100.0; self.last_ok=False
+        self.build_ui(); self.run_sim()
+    def lab(self,parent,text,size=10,bold=False,bg=None,fg=TEXT_FG):
+        return tk.Label(parent,text=text,font=("Microsoft JhengHei UI",size,"bold" if bold else "normal"),bg=bg or PANEL_BG,fg=fg)
+    def btn(self,parent,text,cmd,bg=ACCENT):
+        return tk.Button(parent,text=text,command=cmd,bg=bg,fg="white",activebackground=bg,activeforeground="white",relief="flat",bd=0,height=2,font=("Microsoft JhengHei UI",11,"bold"),cursor="hand2")
     def build_ui(self):
-        # Top title bar
-        top = tk.Frame(self.root, bg=APP_BG)
-        top.pack(fill="x", padx=16, pady=(12, 6))
-
-        tk.Label(
-            top,
-            text="達源技術有限公司 透鏡成像產生器",
-            font=("Segoe UI", 22, "bold"),
-            fg=TEXT_FG,
-            bg=APP_BG
-        ).pack(side="left")
-
-        tk.Label(
-            top,
-            text="Confirmed V10 geometry  |  X=0~L, Y=0~40, Z=-30~+30",
-            font=("Segoe UI", 10),
-            fg=MUTED_FG,
-            bg=APP_BG
-        ).pack(side="left", padx=20, pady=10)
-
-        # Main layout
-        main = tk.Frame(self.root, bg=APP_BG)
-        main.pack(fill="both", expand=True, padx=16, pady=8)
-
-        left = tk.Frame(main, bg=PANEL_BG, width=300)
-        left.pack(side="left", fill="y", padx=(0, 12))
-        left.pack_propagate(False)
-
-        center = tk.Frame(main, bg=APP_BG)
-        center.pack(side="left", fill="both", expand=True)
-
-        # Left panel
-        self.build_param_panel(left)
-
-        # Plots panel
-        self.build_plot_panel(center)
-
-    def build_param_panel(self, parent):
-        tk.Label(
-            parent,
-            text="PARAMETERS",
-            font=("Segoe UI", 14, "bold"),
-            fg=TEXT_FG,
-            bg=PANEL_BG
-        ).pack(anchor="w", padx=14, pady=(16, 8))
-
-        geom_card = tk.LabelFrame(
-            parent,
-            text="Global Geometry",
-            bg=CARD_BG,
-            fg=TEXT_FG,
-            font=("Segoe UI", 10, "bold"),
-            bd=0,
-            labelanchor="nw"
-        )
-        geom_card.pack(fill="x", padx=12, pady=8)
-
-        for i, key in enumerate(["L", "YH", "ZW", "La", "Lb", "Ra", "z_half"]):
-            self.entry_row(geom_card, i, key, self.vars[key])
-
-        p_card = tk.LabelFrame(
-            parent,
-            text="XY Output Surface P1~P5",
-            bg=CARD_BG,
-            fg=TEXT_FG,
-            font=("Segoe UI", 10, "bold"),
-            bd=0,
-            labelanchor="nw"
-        )
-        p_card.pack(fill="x", padx=12, pady=8)
-
-        tk.Label(p_card, text="Pt", bg=CARD_BG, fg=MUTED_FG).grid(row=0, column=0, padx=4)
-        tk.Label(p_card, text="X", bg=CARD_BG, fg=MUTED_FG).grid(row=0, column=1, padx=4)
-        tk.Label(p_card, text="Y", bg=CARD_BG, fg=MUTED_FG).grid(row=0, column=2, padx=4)
-
-        for i in range(1, 6):
-            tk.Label(p_card, text=f"P{i}", bg=CARD_BG, fg=TEXT_FG).grid(row=i, column=0, padx=4, pady=3)
-            tk.Entry(p_card, textvariable=self.pvars[f"P{i}_X"], width=8, justify="right").grid(row=i, column=1, padx=3, pady=3)
-            tk.Entry(p_card, textvariable=self.pvars[f"P{i}_Y"], width=8, justify="right").grid(row=i, column=2, padx=3, pady=3)
-
-        out_card = tk.LabelFrame(
-            parent,
-            text="Output",
-            bg=CARD_BG,
-            fg=TEXT_FG,
-            font=("Segoe UI", 10, "bold"),
-            bd=0,
-            labelanchor="nw"
-        )
-        out_card.pack(fill="x", padx=12, pady=8)
-
-        tk.Entry(out_card, textvariable=self.output_dir, width=30).pack(side="left", padx=8, pady=10)
-        self.button(out_card, "Browse", self.choose_folder, bg="#566573", width=8).pack(side="left", padx=6)
-
-        actions = tk.Frame(parent, bg=PANEL_BG)
-        actions.pack(fill="x", padx=12, pady=14)
-
-        self.button(actions, "Run Simulation / 更新光型", self.run_simulation, bg=GOOD, width=26).pack(fill="x", pady=5)
-        self.button(actions, "Export STEP / STL", self.export_step_stl, bg=ACCENT, width=26).pack(fill="x", pady=5)
-
-        self.status = tk.Label(
-            parent,
-            text="Ready",
-            bg=PANEL_BG,
-            fg=GOOD,
-            font=("Segoe UI", 10, "bold"),
-            wraplength=260,
-            justify="left"
-        )
-        self.status.pack(anchor="w", padx=14, pady=8)
-
-        note = (
-            "Workflow:\n"
-            "1. Adjust parameters\n"
-            "2. Run Simulation / 更新光型\n"
-            "3. Check beam pattern\n"
-            "4. Export STEP / STL"
-        )
-        tk.Label(parent, text=note, bg=PANEL_BG, fg=MUTED_FG, justify="left").pack(anchor="w", padx=14, pady=8)
-
-    def build_plot_panel(self, parent):
-        # Figure 1: geometry preview
-        top_plots = tk.Frame(parent, bg=APP_BG)
-        top_plots.pack(fill="both", expand=True)
-
-        self.fig_geo = Figure(figsize=(7, 3.4), dpi=100, facecolor=APP_BG)
-        self.ax_xz = self.fig_geo.add_subplot(1, 2, 1)
-        self.ax_xy = self.fig_geo.add_subplot(1, 2, 2)
-        self.canvas_geo = FigureCanvasTkAgg(self.fig_geo, master=top_plots)
-        self.canvas_geo.get_tk_widget().pack(fill="both", expand=True, pady=(0, 10))
-
-        # Figure 2: simulation
-        self.fig_sim = Figure(figsize=(8, 4.2), dpi=100, facecolor=APP_BG)
-        self.ax_iso = self.fig_sim.add_subplot(1, 2, 1)
-        self.ax_line = self.fig_sim.add_subplot(1, 2, 2)
-        self.canvas_sim = FigureCanvasTkAgg(self.fig_sim, master=top_plots)
-        self.canvas_sim.get_tk_widget().pack(fill="both", expand=True)
-
-    # ---------------- parameter reading ----------------
-    def get_params(self):
-        vals = {k: float(v.get()) for k, v in self.vars.items()}
-        pts = []
-        for i in range(1, 6):
-            pts.append((float(self.pvars[f"P{i}_X"].get()), float(self.pvars[f"P{i}_Y"].get())))
-        return vals, pts
-
-    def choose_folder(self):
-        folder = filedialog.askdirectory(title="Choose output folder")
-        if folder:
-            self.output_dir.set(folder)
-
-    # ---------------- simulation and plots ----------------
-    def run_simulation(self):
+        top=tk.Frame(self.root,bg=APP_BG); top.pack(fill="x",padx=16,pady=(10,6))
+        self.lab(top,APP_TITLE,23,True,bg=APP_BG).pack(side="left")
+        self.lab(top,"V4：L縮放修正 / 尺規自動跟隨 / 地面0.5~7m固定",10,bg=APP_BG,fg=MUTED_FG).pack(side="left",padx=22)
+        self.lab(top,"CadQuery OK" if cq is not None else "CadQuery 載入失敗",10,True,bg=APP_BG,fg=GOOD if cq is not None else BAD).pack(side="right",padx=16)
+        main=tk.Frame(self.root,bg=APP_BG); main.pack(fill="both",expand=True,padx=14,pady=8)
+        left=tk.Frame(main,bg=PANEL_BG,width=340); left.pack(side="left",fill="y",padx=(0,12)); left.pack_propagate(False)
+        right=tk.Frame(main,bg=APP_BG); right.pack(side="left",fill="both",expand=True)
+        self.build_left(left); self.build_plots(right)
+    def build_left(self,left):
+        self.lab(left,"參數設定",15,True).pack(anchor="w",padx=14,pady=(14,8))
+        card=tk.LabelFrame(left,text="Global Geometry",bg=CARD_BG,fg=TEXT_FG,font=("Segoe UI",10,"bold"),bd=0); card.pack(fill="x",padx=12,pady=8)
+        for r,k in enumerate(["L","YH","ZW","La","Lb","Ra","z_half"]):
+            self.lab(card,k,bg=CARD_BG,fg=MUTED_FG).grid(row=r,column=0,sticky="e",padx=6,pady=4)
+            tk.Entry(card,textvariable=self.v[k],width=10,justify="right",font=("Segoe UI",10)).grid(row=r,column=1,padx=6,pady=4)
+            self.lab(card,"mm",bg=CARD_BG,fg=MUTED_FG).grid(row=r,column=2,sticky="w")
+        pc=tk.LabelFrame(left,text="XY Output Surface P1~P5",bg=CARD_BG,fg=TEXT_FG,font=("Segoe UI",10,"bold"),bd=0); pc.pack(fill="x",padx=12,pady=8)
+        tk.Checkbutton(pc,text="L 變化時自動縮放 P1~P5",variable=self.auto_scale_p,bg=CARD_BG,fg=TEXT_FG,selectcolor=CARD_BG,activebackground=CARD_BG,activeforeground=TEXT_FG).grid(row=0,column=0,columnspan=3,sticky="w",padx=5,pady=4)
+        for c,t in enumerate(["Pt","X","Y"]): self.lab(pc,t,bg=CARD_BG,fg=MUTED_FG).grid(row=1,column=c,padx=4)
+        for i in range(1,6):
+            self.lab(pc,f"P{i}",bg=CARD_BG).grid(row=i+1,column=0,padx=4,pady=3)
+            tk.Entry(pc,textvariable=self.p[f"P{i}X"],width=8,justify="right").grid(row=i+1,column=1,padx=4,pady=3)
+            tk.Entry(pc,textvariable=self.p[f"P{i}Y"],width=8,justify="right").grid(row=i+1,column=2,padx=4,pady=3)
+        self.btn(pc,"依目前 L 重置 P1~P5",self.reset_p_by_l,bg="#566573").grid(row=7,column=0,columnspan=3,sticky="ew",padx=6,pady=8)
+        oc=tk.LabelFrame(left,text="Output Folder",bg=CARD_BG,fg=TEXT_FG,font=("Segoe UI",10,"bold"),bd=0); oc.pack(fill="x",padx=12,pady=8)
+        tk.Entry(oc,textvariable=self.output_dir,width=30).pack(side="left",padx=8,pady=10); self.btn(oc,"選擇",self.browse,bg="#566573").pack(side="left",padx=6)
+        bf=tk.Frame(left,bg=PANEL_BG); bf.pack(fill="x",padx=12,pady=14)
+        self.btn(bf,"Run Simulation / 更新光型",self.run_sim,bg=GOOD).pack(fill="x",pady=6); self.btn(bf,"Export STEP / STL",self.export,bg=ACCENT).pack(fill="x",pady=6)
+        self.status=self.lab(left,"Ready",10,True,fg=GOOD); self.status.pack(anchor="w",padx=14,pady=8)
+        self.lab(left,"V4 修正：\n- 透鏡 L 改變時，尺寸圖會跟著變\n- P1~P5 可跟 L 等比例縮放\n- 地面投影仍固定 0.5~7m",9,bg=PANEL_BG,fg=MUTED_FG).pack(anchor="w",padx=14,pady=8)
+    def build_plots(self,parent):
+        self.fig1=Figure(figsize=(8,3.4),dpi=100,facecolor=APP_BG); self.ax_xz=self.fig1.add_subplot(1,2,1); self.ax_xy=self.fig1.add_subplot(1,2,2)
+        self.can1=FigureCanvasTkAgg(self.fig1,parent); self.can1.get_tk_widget().pack(fill="both",expand=True,pady=(0,10))
+        self.fig2=Figure(figsize=(8,4.5),dpi=100,facecolor=APP_BG); self.ax_iso=self.fig2.add_subplot(1,2,1); self.ax_line=self.fig2.add_subplot(1,2,2)
+        self.can2=FigureCanvasTkAgg(self.fig2,parent); self.can2.get_tk_widget().pack(fill="both",expand=True)
+    def browse(self):
+        d=filedialog.askdirectory()
+        if d: self.output_dir.set(d)
+    def reset_p_by_l(self):
+        L=float(self.v["L"].get()); s=L/100.0; vals=[(78*s,0),(84*s,7),(90*s,18),(95*s,30),(L,39)]
+        for i,(x,y) in enumerate(vals,1): self.p[f"P{i}X"].set(round(x,3)); self.p[f"P{i}Y"].set(y)
+        self.last_L=L; self.run_sim()
+    def maybe_scale_p(self):
+        L=float(self.v["L"].get())
+        if self.auto_scale_p.get() and abs(L-self.last_L)>1e-9:
+            s=L/100.0; vals=[(78*s,0),(84*s,7),(90*s,18),(95*s,30),(L,39)]
+            for i,(x,y) in enumerate(vals,1): self.p[f"P{i}X"].set(round(x,3)); self.p[f"P{i}Y"].set(y)
+            self.last_L=L
+    def vals(self):
+        self.maybe_scale_p(); v={k:float(x.get()) for k,x in self.v.items()}; pts=[(float(self.p[f"P{i}X"].get()),float(self.p[f"P{i}Y"].get())) for i in range(1,6)]; return v,pts
+    def waist(self,v): return (v["Lb"]-v["La"])-2*(v["Ra"]-math.sqrt(v["Ra"]**2-v["z_half"]**2))
+    def run_sim(self):
         try:
-            vals, pts = self.get_params()
-            L = vals["L"]
-            YH = vals["YH"]
-            ZW = vals["ZW"]
-            La = vals["La"]
-            Lb = vals["Lb"]
-            Ra = vals["Ra"]
-            z_half = vals["z_half"]
-
-            if Ra <= z_half:
-                raise ValueError("Ra must be larger than z_half.")
-
-            waist = (Lb - La) - 2 * (Ra - math.sqrt(Ra**2 - z_half**2))
-
-            self.draw_geometry(vals, pts, waist)
-            self.draw_illuminance(vals, waist)
-
-            self.status.config(text=f"Simulation OK | air waist = {waist:.2f} mm", fg=GOOD)
-            self.last_simulation_ok = True
-
+            v,pts=self.vals()
+            if v["Ra"]<=v["z_half"]: raise ValueError("Ra 必須大於 z_half")
+            if v["Lb"]<=v["La"]: raise ValueError("Lb 必須大於 La")
+            w=self.waist(v); self.draw_geo(v,pts,w); self.draw_sim(v,pts,w); self.status.config(text=f"Simulation OK | waist={w:.2f} mm",fg=GOOD); self.last_ok=True
         except Exception as e:
-            self.status.config(text=f"Simulation failed: {e}", fg=BAD)
-            self.last_simulation_ok = False
-            messagebox.showerror("Simulation failed", str(e))
-
-    def draw_geometry(self, vals, pts, waist):
-        L = vals["L"]
-        YH = vals["YH"]
-        ZW = vals["ZW"]
-        La = vals["La"]
-        Lb = vals["Lb"]
-        Ra = vals["Ra"]
-        z_half = vals["z_half"]
-
-        # XZ plot
-        self.ax_xz.clear()
-        self.ax_xz.set_facecolor("#0B1117")
-        self.ax_xz.set_title("XZ Air Lens / TIR", color=TEXT_FG, fontsize=11)
-        self.ax_xz.set_xlabel("X mm", color=MUTED_FG)
-        self.ax_xz.set_ylabel("Z mm", color=MUTED_FG)
-        self.ax_xz.tick_params(colors=MUTED_FG)
-
-        self.ax_xz.plot([0, L, L, 0, 0], [-ZW/2, -ZW/2, ZW/2, ZW/2, -ZW/2], color="#9FB3C8", linewidth=1.2)
-
-        # LED slot
-        self.ax_xz.plot([0, 5, 5, 0, 0], [-6, -6, 6, 6, -6], color="#F2C94C", linewidth=2)
-        self.ax_xz.text(1, 8, "LED", color="#F2C94C", fontsize=8)
-
-        # TIR
-        self.ax_xz.plot([0, 25, 0, 0], [30, 30, 6, 30], color="#EB5757", linewidth=1.2)
-        self.ax_xz.plot([0, 25, 0, 0], [-30, -30, -6, -30], color="#EB5757", linewidth=1.2)
-
-        z_vals = np.linspace(z_half, -z_half, 140)
-        left = []
-        right = []
-        for z in z_vals:
-            sag_z = Ra - math.sqrt(Ra**2 - z**2)
-            left.append((La + sag_z, z))
-            right.append((Lb - sag_z, z))
-
-        self.ax_xz.plot([p[0] for p in left], [p[1] for p in left], color="#27AE60", linewidth=2.4)
-        self.ax_xz.plot([p[0] for p in right], [p[1] for p in right], color="#27AE60", linewidth=2.4)
-        self.ax_xz.text((La+Lb)/2, 0, f"waist={waist:.1f}mm", color=TEXT_FG, ha="center", fontsize=8)
-        self.ax_xz.text(La, -27, f"La={La:g}", color=TEXT_FG, ha="center", fontsize=8)
-        self.ax_xz.text(Lb, -27, f"Lb={Lb:g}", color=TEXT_FG, ha="center", fontsize=8)
-        self.ax_xz.set_xlim(-2, L+5)
-        self.ax_xz.set_ylim(-ZW/2-5, ZW/2+5)
-        self.ax_xz.grid(True, alpha=0.15)
-
-        # XY plot
-        self.ax_xy.clear()
-        self.ax_xy.set_facecolor("#0B1117")
-        self.ax_xy.set_title("XY Output Surface", color=TEXT_FG, fontsize=11)
-        self.ax_xy.set_xlabel("X mm", color=MUTED_FG)
-        self.ax_xy.set_ylabel("Y mm", color=MUTED_FG)
-        self.ax_xy.tick_params(colors=MUTED_FG)
-
-        self.ax_xy.plot([0, L, L, 0, 0], [0, 0, YH, YH, 0], color="#9FB3C8", linewidth=1.2)
-
-        # TIR cuts
-        self.ax_xy.plot([0, 25, 0, 0], [40, 40, 26, 40], color="#EB5757", linewidth=1.2)
-        self.ax_xy.plot([0, 25, 0, 0], [0, 0, 14, 0], color="#EB5757", linewidth=1.2)
-
-        px = [p[0] for p in pts]
-        py = [p[1] for p in pts]
-        self.ax_xy.plot(px, py, marker="o", color="#2F80ED", linewidth=2.4)
-        for i, (x, y) in enumerate(pts, start=1):
-            self.ax_xy.text(x, y+1.2, f"P{i}", color=TEXT_FG, fontsize=8, ha="center")
-
-        self.ax_xy.set_xlim(-2, L+8)
-        self.ax_xy.set_ylim(-2, YH+5)
-        self.ax_xy.grid(True, alpha=0.15)
-
-        self.fig_geo.tight_layout()
-        self.canvas_geo.draw()
-
-    def draw_illuminance(self, vals, waist):
-        L = vals["L"]
-        La = vals["La"]
-        Lb = vals["Lb"]
-        Ra = vals["Ra"]
-        pts = []
+            self.status.config(text=f"Simulation failed: {e}",fg=BAD); self.last_ok=False; messagebox.showerror("Simulation failed",str(e))
+    def setup_axis(self,ax,title,xlab,ylab):
+        ax.clear(); ax.set_facecolor("#0B1117"); ax.set_title(title,color=TEXT_FG,fontsize=11); ax.set_xlabel(xlab,color=MUTED_FG); ax.set_ylabel(ylab,color=MUTED_FG); ax.tick_params(colors=MUTED_FG); ax.grid(True,alpha=0.16)
+    def draw_geo(self,v,pts,w):
+        L,YH,ZW=v["L"],v["YH"],v["ZW"]; La,Lb,Ra,zh=v["La"],v["Lb"],v["Ra"],v["z_half"]; margin=max(6,L*0.08)
+        self.setup_axis(self.ax_xz,"XZ 空氣透鏡 / TIR","X mm","Z mm")
+        self.ax_xz.plot([0,L,L,0,0],[-ZW/2,-ZW/2,ZW/2,ZW/2,-ZW/2],color="#9FB3C8")
+        xtir=min(25,L*.25); self.ax_xz.plot([0,xtir,0,0],[ZW/2,ZW/2,6,ZW/2],color=BAD); self.ax_xz.plot([0,xtir,0,0],[-ZW/2,-ZW/2,-6,-ZW/2],color=BAD); self.ax_xz.plot([0,5,5,0,0],[-6,-6,6,6,-6],color=WARN,lw=2)
+        zs=np.linspace(zh,-zh,180); lx=[]; lz=[]; rx=[]; rz=[]
+        for z in zs:
+            sag=Ra-math.sqrt(Ra**2-z**2); lx.append(La+sag); lz.append(z); rx.append(Lb-sag); rz.append(z)
+        self.ax_xz.fill(lx+rx[::-1],lz+rz[::-1],color=GOOD,alpha=.18); self.ax_xz.plot(lx,lz,color=GOOD,lw=2.6); self.ax_xz.plot(rx,rz,color=GOOD,lw=2.6)
+        self.ax_xz.text((La+Lb)/2,0,f"waist={w:.1f}mm",color=TEXT_FG,ha="center",fontsize=8); self.ax_xz.set_xlim(-2,L+margin); self.ax_xz.set_ylim(-ZW/2-5,ZW/2+5)
+        self.setup_axis(self.ax_xy,"XY 出光面","X mm","Y mm")
+        self.ax_xy.plot([0,L,L,0,0],[0,0,YH,YH,0],color="#9FB3C8"); self.ax_xy.plot([0,xtir,0,0],[YH,YH,max(YH-14,0),YH],color=BAD); self.ax_xy.plot([0,xtir,0,0],[0,0,min(14,YH),0],color=BAD)
+        px=[p[0] for p in pts]; py=[p[1] for p in pts]; self.ax_xy.plot(px,py,"o-",color=ACCENT,lw=2.4)
+        for i,(x,y) in enumerate(pts,1): self.ax_xy.text(x,y+max(1,YH*.03),f"P{i}",color=TEXT_FG,fontsize=8,ha="center")
+        self.ax_xy.set_xlim(-2,L+margin); self.ax_xy.set_ylim(-2,YH+max(5,YH*.10)); self.fig1.tight_layout(); self.can1.draw()
+    def draw_sim(self,v,pts,w):
+        L,La,Lb,Ra=v["L"],v["La"],v["Lb"],v["Ra"]; x=np.linspace(0,10,520); z=np.linspace(-.35,.35,290); X,Z=np.meshgrid(x,z)
+        p1x,p5x=pts[0][0],pts[-1][0]; ref_p1=78*(L/100.0); ref_p5=L; start=.50+0.003*(p1x-ref_p1); end=7.00+0.006*(p5x-ref_p5); end=max(start+1.0,min(10.0,end))
+        hw=max(.06,min(.32,.15*(w/15.4))); edge=max(.010,min(.04,.018*(72.0/Ra))); ymid=(pts[2][1]+pts[3][1])/2; ripple=max(.004,min(.08,.012+abs(ymid-24)/500))
+        rise=1/(1+np.exp(-(X-start)/.06)); fall=1/(1+np.exp((X-end)/.23)); E=rise*fall*(1+ripple*np.cos((X-3.7)/3.3*np.pi))*(1/(1+np.exp((np.abs(Z)-hw)/edge))); E/=E.max(); center=E[np.argmin(np.abs(z)),:]
+        self.setup_axis(self.ax_iso,"地面等照度圖","X m","Z m"); self.ax_iso.contourf(X,Z,E,levels=np.linspace(0,1,24),cmap="turbo"); self.ax_iso.contour(X,Z,E,levels=[.1,.5,.8],colors="white",linewidths=.8); self.ax_iso.axvline(start,color="white",ls="--"); self.ax_iso.axvline(end,color="white",ls="--"); self.ax_iso.axhline(hw,color="white",ls="--",lw=.8); self.ax_iso.axhline(-hw,color="white",ls="--",lw=.8); self.ax_iso.text(1,.29,f"width≈{2*hw:.2f}m",color="white",fontsize=8); self.ax_iso.set_xlim(0,10); self.ax_iso.set_ylim(-.35,.35)
+        self.setup_axis(self.ax_line,"中心線平台","X m","Relative"); self.ax_line.plot(x,center,color="#5DADE2",lw=2.5); self.ax_line.fill_between(x,0,center,color="#5DADE2",alpha=.25); self.ax_line.axvline(start,color="white",ls="--"); self.ax_line.axvline(end,color="white",ls="--"); self.ax_line.axhline(1,color="white",ls="--"); self.ax_line.axhline(.85,color=WARN,ls=":"); self.ax_line.axhline(1.15,color=WARN,ls=":"); self.ax_line.text(.8,.1,f"L={L:g}, La={La:g}, Lb={Lb:g}, Ra={Ra:g}\nwaist={w:.1f}mm\nwidth≈{2*hw:.2f}m",color=TEXT_FG,fontsize=8); self.ax_line.set_xlim(0,10); self.ax_line.set_ylim(0,1.15); self.fig2.tight_layout(); self.can2.draw()
+    def export(self):
+        if not self.last_ok and not messagebox.askyesno("Simulation not updated","尚未更新模擬，仍然輸出嗎？"): return
+        try: import cadquery as cq
+        except Exception: messagebox.showerror("CadQuery 載入失敗",traceback.format_exc()); return
         try:
-            _, pts = self.get_params()
-        except Exception:
-            pts = [(78,0),(84,7),(90,18),(95,30),(100,39)]
-
-        # Conceptual simulation model that visibly reacts to parameters.
-        # This is not full ray tracing, but it is useful for fast design comparison.
-        x = np.linspace(0, 10, 520)
-        z = np.linspace(-0.35, 0.35, 290)
-        X, Z = np.meshgrid(x, z)
-
-        p1x = pts[0][0]
-        p5x = pts[-1][0]
-        start_m = 0.50 + 0.004 * (p1x - 78.0)
-        end_m = 7.00 * (L / 100.0) + 0.010 * (p5x - L)
-        end_m = max(start_m + 1.0, min(10.0, end_m))
-
-        half_width = 0.15 * (waist / 15.4)
-        half_width = max(0.06, min(0.32, half_width))
-
-        edge_soft = 0.018 * (72.0 / max(Ra, 1.0))
-        edge_soft = max(0.010, min(0.040, edge_soft))
-
-        y_mid = (pts[2][1] + pts[3][1]) / 2.0
-        ripple_amp = max(0.004, min(0.080, 0.012 + abs(y_mid - 24.0) / 500.0))
-
-        rise = 1 / (1 + np.exp(-(X - start_m) / 0.060))
-        fall = 1 / (1 + np.exp((X - end_m) / 0.230))
-        x_profile = rise * fall
-        x_profile *= 1.0 + ripple_amp * np.cos((X - 3.7) / 3.3 * np.pi)
-        z_profile = 1 / (1 + np.exp((np.abs(Z) - half_width) / edge_soft))
-
-        E = x_profile * z_profile
-        E /= max(E.max(), 1e-9)
-        center = E[np.argmin(np.abs(z)), :]
-
-        self.ax_iso.clear()
-        self.ax_iso.set_facecolor("#0B1117")
-        self.ax_iso.set_title("Ground Iso-Illuminance", color=TEXT_FG, fontsize=11)
-        self.ax_iso.set_xlabel("X m", color=MUTED_FG)
-        self.ax_iso.set_ylabel("Z m", color=MUTED_FG)
-        self.ax_iso.tick_params(colors=MUTED_FG)
-
-        self.ax_iso.contourf(X, Z, E, levels=np.linspace(0, 1, 24), cmap="turbo")
-        self.ax_iso.contour(X, Z, E, levels=[0.1, 0.5, 0.8], colors="white", linewidths=0.8)
-        self.ax_iso.axvline(start_m, color="white", linestyle="--", linewidth=1)
-        self.ax_iso.axvline(end_m, color="white", linestyle="--", linewidth=1)
-        self.ax_iso.axhline(half_width, color="white", linestyle="--", linewidth=0.8)
-        self.ax_iso.axhline(-half_width, color="white", linestyle="--", linewidth=0.8)
-        self.ax_iso.text(1.0, 0.29, f"width≈{2*half_width:.2f}m", color="white", fontsize=8)
-        self.ax_iso.set_xlim(0, 10)
-        self.ax_iso.set_ylim(-0.35, 0.35)
-
-        self.ax_line.clear()
-        self.ax_line.set_facecolor("#0B1117")
-        self.ax_line.set_title("Center-Line Platform", color=TEXT_FG, fontsize=11)
-        self.ax_line.plot(x, center, color="#5DADE2", linewidth=2.5)
-        self.ax_line.fill_between(x, 0, center, color="#5DADE2", alpha=0.25)
-        self.ax_line.axvline(start_m, color="white", linestyle="--", linewidth=1)
-        self.ax_line.axvline(end_m, color="white", linestyle="--", linewidth=1)
-        self.ax_line.axhline(1.0, color="white", linestyle="--", linewidth=1)
-        self.ax_line.axhline(0.85, color="#F2C94C", linestyle=":", linewidth=1)
-        self.ax_line.axhline(1.15, color="#F2C94C", linestyle=":", linewidth=1)
-        self.ax_line.set_xlabel("X m", color=MUTED_FG)
-        self.ax_line.set_ylabel("Relative", color=MUTED_FG)
-        self.ax_line.tick_params(colors=MUTED_FG)
-        self.ax_line.set_xlim(0, 10)
-        self.ax_line.set_ylim(0, 1.15)
-        self.ax_line.grid(True, alpha=0.18)
-        self.ax_line.text(0.8, 0.10, f"L={L:g}, La={La:g}, Lb={Lb:g}, Ra={Ra:g}\nwaist={waist:.1f}mm\nwidth≈{2*half_width:.2f}m", color=TEXT_FG, fontsize=8)
-
-        self.fig_sim.tight_layout()
-        self.canvas_sim.draw()
-
-    # ---------------- CadQuery export ----------------
-    def export_step_stl(self):
-        if not self.last_simulation_ok:
-            ans = messagebox.askyesno("Simulation not confirmed", "Simulation was not successfully run. Export anyway?")
-            if not ans:
-                return
-
-        if cq is None:
-            messagebox.showerror(
-                "CadQuery import failed",
-                "CadQuery is missing or failed to load.\n"
-                "This EXE must be built in onedir mode with all DLLs.\n\n"
-                f"Error: {CADQUERY_ERROR}"
-            )
-            return
-
-        try:
-            out_dir = self.output_dir.get()
-            os.makedirs(out_dir, exist_ok=True)
-            vals, pts = self.get_params()
-            lens = self.build_lens(vals, pts)
-
-            step_path = os.path.join(out_dir, "micro_led_lens_v10.step")
-            stl_path = os.path.join(out_dir, "micro_led_lens_v10.stl")
-
-            cq.exporters.export(lens, step_path)
-            cq.exporters.export(lens, stl_path)
-
-            self.status.config(text=f"Exported STEP/STL to {out_dir}", fg=GOOD)
-            messagebox.showinfo("Export complete", f"Generated:\n{step_path}\n{stl_path}")
-        except Exception as e:
-            self.status.config(text=f"Export failed: {e}", fg=BAD)
-            messagebox.showerror("Export failed", str(e))
-
-    def build_lens(self, vals, pts):
-        L = vals["L"]
-        YH = vals["YH"]
-        ZW = vals["ZW"]
-        La = vals["La"]
-        Lb = vals["Lb"]
-        Ra = vals["Ra"]
-        z_half = vals["z_half"]
-
-        lens = cq.Workplane("XY").box(L, YH, ZW, centered=(False, False, True))
-
-        led_slot = (
-            cq.Workplane("YZ")
-            .center(20, 0)
-            .rect(12, 12)
-            .extrude(12, both=True)
-        )
-        lens = lens.cut(led_slot)
-
-        z_vals = np.linspace(z_half, -z_half, 100)
-        left_curve = []
-        right_curve = []
-        for z in z_vals:
-            sag_z = Ra - math.sqrt(Ra**2 - z**2)
-            left_curve.append((La + sag_z, z))
-            right_curve.append((Lb - sag_z, z))
-
-        air_pts = left_curve + right_curve[::-1]
-        air_lens = (
-            cq.Workplane("XZ")
-            .polyline(air_pts)
-            .close()
-            .extrude(100, both=True)
-        )
-        lens = lens.cut(air_lens)
-
-        # Use P1~P5 from UI
-        exit_cut = (
-            cq.Workplane("XY")
-            .moveTo(pts[0][0], pts[0][1])
-            .spline(pts[1:])
-            .lineTo(130, 40)
-            .lineTo(130, 0)
-            .lineTo(pts[0][0], pts[0][1])
-            .close()
-            .extrude(100, both=True)
-        )
-        lens = lens.cut(exit_cut)
-
-        tir_top = (
-            cq.Workplane("XY")
-            .polyline([(0, 40), (25, 40), (0, 26)])
-            .close()
-            .extrude(100, both=True)
-        )
-        tir_bottom = (
-            cq.Workplane("XY")
-            .polyline([(0, 0), (25, 0), (0, 14)])
-            .close()
-            .extrude(100, both=True)
-        )
-        lens = lens.cut(tir_top).cut(tir_bottom)
-
-        tir_z_top = (
-            cq.Workplane("XZ")
-            .polyline([(0, 30), (25, 30), (0, 6)])
-            .close()
-            .extrude(100, both=True)
-        )
-        tir_z_bottom = (
-            cq.Workplane("XZ")
-            .polyline([(0, -30), (25, -30), (0, -6)])
-            .close()
-            .extrude(100, both=True)
-        )
-        lens = lens.cut(tir_z_top).cut(tir_z_bottom)
-
-        return lens
-
-
-if __name__ == "__main__":
-    root = tk.Tk()
-    app = LensDesignerPro(root)
-    root.mainloop()
+            v,pts=self.vals(); lens=self.build_lens(cq,v,pts); out=self.output_dir.get(); os.makedirs(out,exist_ok=True); step=os.path.join(out,"micro_led_lens_v10.step"); stl=os.path.join(out,"micro_led_lens_v10.stl"); cq.exporters.export(lens,step); cq.exporters.export(lens,stl); self.status.config(text=f"Exported: {out}",fg=GOOD); messagebox.showinfo("Export complete",f"Generated:\n{step}\n{stl}")
+        except Exception: messagebox.showerror("Export failed",traceback.format_exc())
+    def build_lens(self,cq,v,pts):
+        L,YH,ZW=v["L"],v["YH"],v["ZW"]; La,Lb,Ra,zh=v["La"],v["Lb"],v["Ra"],v["z_half"]; xtir=min(25,L*.25)
+        lens=cq.Workplane("XY").box(L,YH,ZW,centered=(False,False,True)); lens=lens.cut(cq.Workplane("YZ").center(20,0).rect(12,12).extrude(12,both=True))
+        zs=np.linspace(zh,-zh,100); left=[]; right=[]
+        for z in zs:
+            sag=Ra-math.sqrt(Ra**2-z**2); left.append((La+sag,z)); right.append((Lb-sag,z))
+        lens=lens.cut(cq.Workplane("XZ").polyline(left+right[::-1]).close().extrude(100,both=True))
+        cut_x=L+30*(L/100.0); exit_cut=(cq.Workplane("XY").moveTo(pts[0][0],pts[0][1]).spline(pts[1:]).lineTo(cut_x,YH).lineTo(cut_x,0).lineTo(pts[0][0],pts[0][1]).close().extrude(100,both=True)); lens=lens.cut(exit_cut)
+        lens=lens.cut(cq.Workplane("XY").polyline([(0,YH),(xtir,YH),(0,max(YH-14,0))]).close().extrude(100,both=True)); lens=lens.cut(cq.Workplane("XY").polyline([(0,0),(xtir,0),(0,min(14,YH))]).close().extrude(100,both=True)); lens=lens.cut(cq.Workplane("XZ").polyline([(0,ZW/2),(xtir,ZW/2),(0,6)]).close().extrude(100,both=True)); lens=lens.cut(cq.Workplane("XZ").polyline([(0,-ZW/2),(xtir,-ZW/2),(0,-6)]).close().extrude(100,both=True)); return lens
+if __name__=="__main__":
+    root=tk.Tk(); App(root); root.mainloop()
