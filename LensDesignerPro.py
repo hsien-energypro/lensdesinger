@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-import os, math, traceback
+import os, sys, math, traceback
 import tkinter as tk
 from tkinter import filedialog, messagebox
 import numpy as np
@@ -13,12 +13,28 @@ APP_TITLE = "達源技術有限公司 透鏡成像產生器"
 APP_BG="#101820"; PANEL_BG="#17212B"; CARD_BG="#1F2B38"
 TEXT_FG="#EAF2F8"; MUTED_FG="#AAB7C4"; ACCENT="#2F80ED"; GOOD="#27AE60"; BAD="#EB5757"; WARN="#F2C94C"
 
+def resource_path(name):
+    if hasattr(sys, "_MEIPASS"):
+        return os.path.join(sys._MEIPASS, name)
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), name)
+
 class App:
     def __init__(self, root):
         self.root=root
         self.root.title(APP_TITLE)
-        self.root.geometry("1400x880")
-        self.root.minsize(1280,820)
+        ico = resource_path("icon.ico")
+        if os.path.exists(ico):
+            try:
+                self.root.iconbitmap(ico)
+            except Exception:
+                pass
+
+        self.root.geometry("1420x900")
+        self.root.minsize(1180,760)
+        try:
+            self.root.state("zoomed")
+        except Exception:
+            pass
         self.root.configure(bg=APP_BG)
 
         self.output_dir=tk.StringVar(value=os.path.abspath(os.getcwd()))
@@ -38,7 +54,7 @@ class App:
         self.last_L=100.0
         self.last_ok=False
         self.build_ui()
-        self.run_sim()
+        self.root.after(300, self.run_sim)
 
     def lab(self,p,t,size=10,bold=False,bg=None,fg=TEXT_FG):
         return tk.Label(p,text=t,font=("Microsoft JhengHei UI",size,"bold" if bold else "normal"),bg=bg or PANEL_BG,fg=fg)
@@ -48,63 +64,83 @@ class App:
                          relief="flat",bd=0,height=h,font=("Microsoft JhengHei UI",10,"bold"),cursor="hand2")
 
     def build_ui(self):
-        top=tk.Frame(self.root,bg=APP_BG); top.pack(fill="x",padx=16,pady=(10,6))
-        self.lab(top,APP_TITLE,23,True,bg=APP_BG).pack(side="left")
-        self.lab(top,"V5 UI固定版：Run Simulation / Export STEP 按鈕固定顯示",10,bg=APP_BG,fg=MUTED_FG).pack(side="left",padx=20)
+        self.root.grid_rowconfigure(1, weight=1)
+        self.root.grid_columnconfigure(0, weight=1)
 
-        main=tk.Frame(self.root,bg=APP_BG); main.pack(fill="both",expand=True,padx=14,pady=8)
-        left=tk.Frame(main,bg=PANEL_BG,width=360); left.pack(side="left",fill="y",padx=(0,12)); left.pack_propagate(False)
-        right=tk.Frame(main,bg=APP_BG); right.pack(side="left",fill="both",expand=True)
+        top=tk.Frame(self.root,bg=APP_BG)
+        top.grid(row=0,column=0,sticky="ew",padx=16,pady=(8,4))
+        self.lab(top,APP_TITLE,23,True,bg=APP_BG).pack(side="left")
+        self.lab(top,"V6 LOGO/UI修正版",10,bg=APP_BG,fg=MUTED_FG).pack(side="left",padx=20)
+
+        main=tk.Frame(self.root,bg=APP_BG)
+        main.grid(row=1,column=0,sticky="nsew",padx=14,pady=8)
+        main.grid_rowconfigure(0, weight=1)
+        main.grid_columnconfigure(1, weight=1)
+
+        left=tk.Frame(main,bg=PANEL_BG,width=360)
+        left.grid(row=0,column=0,sticky="ns",padx=(0,12))
+        left.grid_propagate(False)
+
+        right=tk.Frame(main,bg=APP_BG)
+        right.grid(row=0,column=1,sticky="nsew")
+        right.grid_rowconfigure(0, weight=1)
+        right.grid_rowconfigure(1, weight=1)
+        right.grid_columnconfigure(0, weight=1)
 
         self.build_left(left)
         self.build_plots(right)
 
     def build_left(self,left):
-        self.lab(left,"參數設定",15,True).pack(anchor="w",padx=14,pady=(12,6))
+        left.grid_rowconfigure(5, weight=1)
+        left.grid_columnconfigure(0, weight=1)
+
+        self.lab(left,"參數設定",15,True).grid(row=0,column=0,sticky="w",padx=14,pady=(10,4))
 
         card=tk.LabelFrame(left,text="Global Geometry",bg=CARD_BG,fg=TEXT_FG,font=("Segoe UI",10,"bold"),bd=0)
-        card.pack(fill="x",padx=12,pady=6)
+        card.grid(row=1,column=0,sticky="ew",padx=12,pady=4)
         for r,k in enumerate(["L","YH","ZW","La","Lb","Ra","z_half"]):
-            self.lab(card,k,bg=CARD_BG,fg=MUTED_FG).grid(row=r,column=0,sticky="e",padx=6,pady=3)
-            tk.Entry(card,textvariable=self.v[k],width=10,justify="right",font=("Segoe UI",10)).grid(row=r,column=1,padx=6,pady=3)
+            self.lab(card,k,bg=CARD_BG,fg=MUTED_FG).grid(row=r,column=0,sticky="e",padx=6,pady=2)
+            tk.Entry(card,textvariable=self.v[k],width=10,justify="right",font=("Segoe UI",10)).grid(row=r,column=1,padx=6,pady=2)
             self.lab(card,"mm",bg=CARD_BG,fg=MUTED_FG).grid(row=r,column=2,sticky="w")
 
         pc=tk.LabelFrame(left,text="XY Output Surface P1~P5",bg=CARD_BG,fg=TEXT_FG,font=("Segoe UI",10,"bold"),bd=0)
-        pc.pack(fill="x",padx=12,pady=6)
+        pc.grid(row=2,column=0,sticky="ew",padx=12,pady=4)
         tk.Checkbutton(pc,text="L變化時自動縮放P點",variable=self.auto_scale_p,bg=CARD_BG,fg=TEXT_FG,
-                       selectcolor=CARD_BG,activebackground=CARD_BG,activeforeground=TEXT_FG).grid(row=0,column=0,columnspan=3,sticky="w",padx=5,pady=2)
+                       selectcolor=CARD_BG,activebackground=CARD_BG,activeforeground=TEXT_FG).grid(row=0,column=0,columnspan=3,sticky="w",padx=5,pady=1)
         for c,t in enumerate(["Pt","X","Y"]): self.lab(pc,t,bg=CARD_BG,fg=MUTED_FG).grid(row=1,column=c,padx=4)
         for i in range(1,6):
-            self.lab(pc,f"P{i}",bg=CARD_BG).grid(row=i+1,column=0,padx=4,pady=2)
-            tk.Entry(pc,textvariable=self.p[f"P{i}X"],width=8,justify="right").grid(row=i+1,column=1,padx=4,pady=2)
-            tk.Entry(pc,textvariable=self.p[f"P{i}Y"],width=8,justify="right").grid(row=i+1,column=2,padx=4,pady=2)
-        self.btn(pc,"依目前L重置P1~P5",self.reset_p_by_l,bg="#566573",h=1).grid(row=7,column=0,columnspan=3,sticky="ew",padx=6,pady=5)
+            self.lab(pc,f"P{i}",bg=CARD_BG).grid(row=i+1,column=0,padx=4,pady=1)
+            tk.Entry(pc,textvariable=self.p[f"P{i}X"],width=8,justify="right").grid(row=i+1,column=1,padx=4,pady=1)
+            tk.Entry(pc,textvariable=self.p[f"P{i}Y"],width=8,justify="right").grid(row=i+1,column=2,padx=4,pady=1)
+        self.btn(pc,"依目前L重置P1~P5",self.reset_p_by_l,bg="#566573",h=1).grid(row=7,column=0,columnspan=3,sticky="ew",padx=6,pady=4)
 
         oc=tk.LabelFrame(left,text="Output Folder",bg=CARD_BG,fg=TEXT_FG,font=("Segoe UI",10,"bold"),bd=0)
-        oc.pack(fill="x",padx=12,pady=6)
-        tk.Entry(oc,textvariable=self.output_dir,width=31,font=("Segoe UI",9)).pack(side="left",padx=7,pady=8)
-        # 小一點，避免「選擇」被切掉
+        oc.grid(row=3,column=0,sticky="ew",padx=12,pady=4)
+        oc.grid_columnconfigure(0, weight=1)
+        tk.Entry(oc,textvariable=self.output_dir,font=("Segoe UI",8)).grid(row=0,column=0,sticky="ew",padx=(7,4),pady=7)
         tk.Button(oc,text="選擇",command=self.browse,bg="#566573",fg="white",relief="flat",bd=0,
-                  width=6,height=1,font=("Microsoft JhengHei UI",8,"bold")).pack(side="left",padx=4,pady=8)
+                  width=5,height=1,font=("Microsoft JhengHei UI",8,"bold")).grid(row=0,column=1,padx=(2,7),pady=7)
 
-        # 固定功能按鈕區，不讓它被壓掉
         actions=tk.LabelFrame(left,text="Actions",bg=PANEL_BG,fg=TEXT_FG,font=("Segoe UI",10,"bold"),bd=0)
-        actions.pack(fill="x",side="bottom",padx=12,pady=12)
-        self.btn(actions,"Run Simulation / 更新光型",self.run_sim,bg=GOOD,h=2).pack(fill="x",pady=5)
-        self.btn(actions,"Export STEP / STL 產生3D檔",self.export,bg=ACCENT,h=2).pack(fill="x",pady=5)
-        self.status=self.lab(actions,"Ready",10,True,fg=GOOD)
-        self.status.pack(anchor="w",pady=5)
+        actions.grid(row=4,column=0,sticky="ew",padx=12,pady=8)
+        self.btn(actions,"Run Simulation / 更新光型",self.run_sim,bg=GOOD,h=2).pack(fill="x",pady=4)
+        self.btn(actions,"Export STEP / STL 產生3D檔",self.export,bg=ACCENT,h=2).pack(fill="x",pady=4)
+        self.status=self.lab(actions,"Ready",9,True,fg=GOOD)
+        self.status.pack(anchor="w",pady=4)
 
-        note="修正：\n1. 選擇按鈕字縮小\n2. Run Simulation 固定在左下\n3. Export STEP/STL 固定在左下\n4. 尺規隨 L/YH/ZW 改變"
-        self.lab(left,note,9,bg=PANEL_BG,fg=MUTED_FG).pack(anchor="w",padx=14,pady=6)
+        note="若未最大化也不會把按鈕擠掉。\n工作列與視窗圖示會使用 icon.ico。"
+        self.lab(left,note,9,bg=PANEL_BG,fg=MUTED_FG).grid(row=5,column=0,sticky="nw",padx=14,pady=8)
 
     def build_plots(self,right):
         self.fig1=Figure(figsize=(8,3.5),dpi=100,facecolor=APP_BG)
         self.ax_xz=self.fig1.add_subplot(1,2,1); self.ax_xy=self.fig1.add_subplot(1,2,2)
-        self.can1=FigureCanvasTkAgg(self.fig1,right); self.can1.get_tk_widget().pack(fill="both",expand=True,pady=(0,10))
+        self.can1=FigureCanvasTkAgg(self.fig1,right)
+        self.can1.get_tk_widget().grid(row=0,column=0,sticky="nsew",pady=(0,8))
+
         self.fig2=Figure(figsize=(8,4.5),dpi=100,facecolor=APP_BG)
         self.ax_iso=self.fig2.add_subplot(1,2,1); self.ax_line=self.fig2.add_subplot(1,2,2)
-        self.can2=FigureCanvasTkAgg(self.fig2,right); self.can2.get_tk_widget().pack(fill="both",expand=True)
+        self.can2=FigureCanvasTkAgg(self.fig2,right)
+        self.can2.get_tk_widget().grid(row=1,column=0,sticky="nsew")
 
     def browse(self):
         d=filedialog.askdirectory()
