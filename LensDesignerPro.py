@@ -192,10 +192,9 @@ class App:
             v,pts,rs=self.vals()
             if v["Ra"]<=v["z_half"]: raise ValueError("Ra 必須大於 z_half")
             if v["Lb"]<=v["La"]: raise ValueError("Lb 必須大於 La")
-            w=self.waist(v); self.draw_geo(v,pts,rs,w); sim_info=self.draw_sim(v,pts,rs,w)
-            paths=self.save_simulation_files(v,pts,rs,w,sim_info)
-            self.status.config(text=f"Simulation OK | waist={w:.2f} mm\nPNG/TXT saved",fg=GOOD)
-            self.last_ok=True; self.last_sim_paths=paths
+            w=self.waist(v); self.draw_geo(v,pts,rs,w); self.draw_sim(v,pts,rs,w)
+            self.status.config(text="",fg=GOOD)
+            self.last_ok=True
         except Exception as e:
             self.status.config(text=f"Simulation failed: {e}",fg=BAD); self.last_ok=False
             messagebox.showerror("Simulation failed",str(e))
@@ -281,8 +280,10 @@ class App:
             ts=datetime.now().strftime("%Y%m%d_%H%M%S")
             step=os.path.join(out,f"micro_led_lens_{ts}.step"); stl=os.path.join(out,f"micro_led_lens_{ts}.stl")
             cq.exporters.export(lens,step); cq.exporters.export(lens,stl)
-            self.status.config(text=f"Exported STEP/STL\n{ts}",fg=GOOD)
-            messagebox.showinfo("Export complete",f"Generated:\n{step}\n{stl}")
+            sim_info=self.draw_sim(v,pts,rs,self.waist(v))
+            self.save_simulation_files(v,pts,rs,self.waist(v),sim_info)
+            self.status.config(text="",fg=GOOD)
+            messagebox.showinfo("Export complete",f"Generated:\n{step}\n{stl}\nPNG/TXT saved")
         except Exception: messagebox.showerror("Export failed",traceback.format_exc())
 
     def build_lens(self,cq,v,pts):
