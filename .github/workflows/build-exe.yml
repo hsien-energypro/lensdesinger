@@ -19,7 +19,7 @@ jobs:
         shell: pwsh
         run: |
           if (Test-Path "icon.ico") {
-            pyinstaller --noconfirm --onedir --windowed --icon=icon.ico --name LensDesignerPro --runtime-hook runtime_hook.py --collect-all cadquery --collect-all OCP --collect-all vtkmodules --collect-all casadi LensDesignerPro.py
+            pyinstaller --noconfirm --onedir --windowed --icon=icon.ico --add-data "icon.ico;." --name LensDesignerPro --runtime-hook runtime_hook.py --collect-all cadquery --collect-all OCP --collect-all vtkmodules --collect-all casadi LensDesignerPro.py
           } else {
             pyinstaller --noconfirm --onedir --windowed --name LensDesignerPro --runtime-hook runtime_hook.py --collect-all cadquery --collect-all OCP --collect-all vtkmodules --collect-all casadi LensDesignerPro.py
           }
