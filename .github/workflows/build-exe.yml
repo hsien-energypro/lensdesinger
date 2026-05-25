@@ -1,18 +1,14 @@
 name: Build LensDesigner Pro EXE
-
 on:
   workflow_dispatch:
   push:
     branches: [ main ]
-
 jobs:
   build-windows-exe:
     runs-on: windows-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-      - name: Set up Python 3.11
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
       - name: Upgrade pip
@@ -27,8 +23,7 @@ jobs:
           } else {
             pyinstaller --noconfirm --onedir --windowed --name LensDesignerPro --runtime-hook runtime_hook.py --collect-all cadquery --collect-all OCP --collect-all vtkmodules --collect-all casadi LensDesignerPro.py
           }
-      - name: Upload EXE artifact
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: LensDesignerPro-Windows-Folder
           path: dist/LensDesignerPro
