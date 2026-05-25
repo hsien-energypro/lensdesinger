@@ -1,1 +1,1 @@
-把 icon.ico 放這裡
+可把 icon.ico 放在根目錄，workflow 會自動套用。
