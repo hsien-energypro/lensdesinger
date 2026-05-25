@@ -22,10 +22,16 @@ jobs:
         run: python -m pip install --upgrade pip
 
       - name: Install dependencies
-        run: pip install pyinstaller
+        run: pip install numpy matplotlib cadquery pyinstaller
 
       - name: Build EXE onedir
-        run: pyinstaller --noconfirm --onedir --windowed --icon=icon.ico --name LensDesignerPro LensDesignerPro.py
+        shell: pwsh
+        run: |
+          if (Test-Path "icon.ico") {
+            pyinstaller --noconfirm --onedir --windowed --icon=icon.ico --name LensDesignerPro --collect-all cadquery --collect-all OCP --collect-all vtkmodules --collect-all casadi LensDesignerPro.py
+          } else {
+            pyinstaller --noconfirm --onedir --windowed --name LensDesignerPro --collect-all cadquery --collect-all OCP --collect-all vtkmodules --collect-all casadi LensDesignerPro.py
+          }
 
       - name: Upload EXE artifact
         uses: actions/upload-artifact@v4
