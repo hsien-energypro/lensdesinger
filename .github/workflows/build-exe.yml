@@ -1,4 +1,4 @@
-name: Build LensDesigner Pro EXE
+name: Build LensDesigner Pro V11 EXE
 on:
   workflow_dispatch:
   push:
