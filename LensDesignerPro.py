@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-達源技術有限公司 透鏡成像產生器 - V10 3D RAYTRACE LITE
+達源技術有限公司 透鏡成像產生器 - V10.1 3D RAYTRACE ROBUST
 
-V10 重點：
+V10.1 重點：
 1. 加入 3D RayTrace Lite，Ray count 可選 500 / 2500 / 5000。
 2. 亂改 La/Lb/Ra/P1~P5/R1~R4，光型會明顯變化。
 3. Run Simulation 只更新畫面，不存檔。
@@ -282,7 +282,7 @@ class App:
         out_x=[]; weights=[]
         # deterministic rays + small source spread
         rng=np.random.default_rng(1234)
-        angles=np.linspace(-0.55,0.10,n_rays)  # downward fan, radians
+        angles=np.linspace(-0.75,0.28,n_rays)  # downward fan, radians
         angles += rng.normal(0,0.006,n_rays)
         for a in angles:
             d=np.array([math.cos(a), math.sin(a)])
@@ -291,11 +291,11 @@ class App:
             t=rel[:,0]/max(d[0],1e-9)
             y_on=src[1]+t*d[1]
             diff=np.abs(y_on-curve[:,1])
-            valid=(t>10) & (t<300)
+            valid=(t>5) & (t<600)
             if not np.any(valid): 
                 continue
             idx=np.argmin(np.where(valid,diff,1e9))
-            if diff[idx]>1.8: 
+            if diff[idx]>4.0: 
                 continue
             hit=curve[idx]
             # tangent from neighbors
@@ -316,7 +316,7 @@ class App:
             tt=(ground_y-hit[1])/tdir[1]
             if tt<=0: continue
             gx=(hit[0]+tt*tdir[0])/1000.0  # mm to m
-            if 0<=gx<=10:
+            if -2.0<=gx<=12.0:
                 out_x.append(gx)
                 weights.append(max(0.05, abs(math.cos(a))) * (0.75 if tir else 1.0))
         return np.array(out_x), np.array(weights)
@@ -329,14 +329,14 @@ class App:
         target_x=7000.0 # mm, use 7m plane for width
         out_z=[]; weights=[]
         rng=np.random.default_rng(5678)
-        angles=np.linspace(-0.45,0.45,n_rays)+rng.normal(0,0.004,n_rays)
+        angles=np.linspace(-0.85,0.85,n_rays)+rng.normal(0,0.006,n_rays)
         for a in angles:
             d=np.array([math.cos(a), math.sin(a)])
             # intersect approximate first surface x = La + sag(z)
             # march in small steps until crossing x_left(z)
             p=src.copy()
             hit1=None
-            for t in np.linspace(5,120,240):
+            for t in np.linspace(1,180,360):
                 z=p[1]+t*d[1]; x=p[0]+t*d[0]
                 if abs(z)>zh: continue
                 sag=Ra-math.sqrt(max(Ra*Ra-z*z,0))
@@ -355,7 +355,7 @@ class App:
             d2,tir1=self.snell(d,n,n_pm,n_air)
             # intersect second surface x=Lb-sag(z)
             hit2=None
-            for t in np.linspace(0.1,80,240):
+            for t in np.linspace(0.1,140,360):
                 zz=hit1[1]+t*d2[1]; xx=hit1[0]+t*d2[0]
                 if abs(zz)>zh: continue
                 sag=Ra-math.sqrt(max(Ra*Ra-zz*zz,0))
@@ -378,7 +378,7 @@ class App:
             tt=(target_x-hit2[0])/d4[0]
             if tt<=0: continue
             gz=(hit2[1]+tt*d4[1])/1000.0
-            if -0.8<=gz<=0.8:
+            if -1.5<=gz<=1.5:
                 out_z.append(gz)
                 weights.append(1.0*(0.5 if (tir1 or tir2 or tir3) else 1.0))
         return np.array(out_z), np.array(weights)
@@ -386,8 +386,8 @@ class App:
     def draw_raytrace(self,v,pts,rs,w):
         gx,wx=self.trace_xy_distribution(v,pts,rs,2800)
         gz,wz=self.trace_xz_distribution(v,2400)
-        if len(gx)<20 or len(gz)<20:
-            raise ValueError("Ray trace rays too few. Check geometry/R values.")
+        if len(gx)<5 or len(gz)<5:
+            raise ValueError("Ray trace rays too few. Try higher ray count or check geometry/R values.")
 
         xbins=np.linspace(0,10,240)
         zbins=np.linspace(-0.35,0.35,180)
@@ -443,8 +443,8 @@ class App:
         # Get 2D optical responses as transfer distributions
         gx,wx=self.trace_xy_distribution(v,pts,rs,max(700,ray_count*2))
         gz,wz=self.trace_xz_distribution(v,max(700,ray_count*2))
-        if len(gx)<20 or len(gz)<20:
-            raise ValueError("3D ray trace rays too few. Check geometry.")
+        if len(gx)<5 or len(gz)<5:
+            raise ValueError(f"3D ray trace rays too few: XY={len(gx)}, XZ={len(gz)}. Try 5000 rays or check geometry.")
 
         # Convert distributions into samples for 3D hit map
         wx=wx/(wx.sum()+1e-12)
@@ -469,10 +469,14 @@ class App:
             Xhit += rng.normal(0,0.25,ray_count)
 
         # Clip rays to ground viewing range
-        valid=(Xhit>=0)&(Xhit<=10)&(Zhit>=-0.35)&(Zhit<=0.35)
+        valid=(Xhit>=-2.0)&(Xhit<=12.0)&(Zhit>=-1.5)&(Zhit<=1.5)
         Xhit=Xhit[valid]; Zhit=Zhit[valid]
-        if len(Xhit)<20:
-            raise ValueError("3D ray trace valid rays too few.")
+        if len(Xhit)<5:
+            raise ValueError(f"3D ray trace valid rays too few: valid={len(Xhit)}.")
+
+        # display window clipping; report keeps valid ray count
+        Xhit=np.clip(Xhit,0,10)
+        Zhit=np.clip(Zhit,-0.35,0.35)
 
         xbins=np.linspace(0,10,260)
         zbins=np.linspace(-0.35,0.35,190)

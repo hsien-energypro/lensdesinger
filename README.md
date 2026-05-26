@@ -1,7 +1,9 @@
-# LensDesignerPro V10 3D RayTrace Lite
+# LensDesignerPro V10.1 3D RayTrace Robust
 
-新增：
-- Ray count 可選 500 / 2500 / 5000。
-- Run 3D RayTrace：只更新畫面，不存檔。
-- Export 才輸出 STEP/STL/PNG/TXT。
-- 這是簡化 3D ray tracing lite，不是 Zemax 等級，但比 V9 2D 合成更接近真 3D。
+修正：
+- 放寬有效光線判定，不會一開始就 rays too few。
+- X/Y/Z clipping 放寬，最後再投影到 0~10m / ±0.35m 顯示視窗。
+- XY/XZ ray fan 加寬，500/2500/5000 都能跑。
+- 保留：Run 3D RayTrace 只更新畫面；Export 才輸出 STEP/STL/PNG/TXT。
+
+注意：這仍是自製 3D RayTrace Lite，不是 Zemax。
