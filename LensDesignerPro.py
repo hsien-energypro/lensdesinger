@@ -1,4 +1,15 @@
 # -*- coding: utf-8 -*-
+"""
+達源技術有限公司 透鏡成像產生器 - V10 3D RAYTRACE LITE
+
+V10 重點：
+1. 加入 3D RayTrace Lite，Ray count 可選 500 / 2500 / 5000。
+2. 亂改 La/Lb/Ra/P1~P5/R1~R4，光型會明顯變化。
+3. Run Simulation 只更新畫面，不存檔。
+4. Export STEP/STL 才存 STEP/STL + PNG + TXT，檔名都有時間戳。
+5. 按鈕文字改成 Run Simulation。
+"""
+
 import os, sys, math, traceback
 from datetime import datetime
 import tkinter as tk
@@ -25,17 +36,13 @@ class App:
         self.root.title(APP_TITLE)
         ico = resource_path("icon.ico")
         if os.path.exists(ico):
-            try:
-                self.root.iconbitmap(ico)
-            except Exception:
-                pass
+            try: self.root.iconbitmap(ico)
+            except Exception: pass
 
         self.root.geometry("1420x900")
         self.root.minsize(1180,760)
-        try:
-            self.root.state("zoomed")
-        except Exception:
-            pass
+        try: self.root.state("zoomed")
+        except Exception: pass
         self.root.configure(bg=APP_BG)
 
         self.output_dir=tk.StringVar(value=os.path.abspath(os.getcwd()))
@@ -58,9 +65,10 @@ class App:
             "R4":tk.DoubleVar(value=12.0),
         }
         self.auto_scale_p=tk.BooleanVar(value=True)
+        self.ray_count=tk.IntVar(value=2500)
         self.last_L=100.0
         self.last_ok=False
-        self.last_sim_paths=[]
+        self.last_sim_info={}
         self.build_ui()
         self.root.after(300, self.run_sim)
 
@@ -99,7 +107,7 @@ class App:
         self.build_plots(right)
 
     def build_left(self,left):
-        left.grid_rowconfigure(6, weight=1)
+        left.grid_rowconfigure(7, weight=1)
         left.grid_columnconfigure(0, weight=1)
 
         self.lab(left,"參數設定",15,True).grid(row=0,column=0,sticky="w",padx=14,pady=(10,4))
@@ -128,18 +136,25 @@ class App:
             self.lab(rc,k,bg=CARD_BG,fg=MUTED_FG).grid(row=0,column=i*2,padx=(5,1),pady=5)
             tk.Entry(rc,textvariable=self.r[k],width=6,justify="right",font=("Segoe UI",9)).grid(row=0,column=i*2+1,padx=(1,5),pady=5)
 
+        rayc=tk.LabelFrame(left,text="3D RayTrace Lite",bg=CARD_BG,fg=TEXT_FG,font=("Segoe UI",10,"bold"),bd=0)
+        rayc.grid(row=4,column=0,sticky="ew",padx=12,pady=3)
+        self.lab(rayc,"Ray count",bg=CARD_BG,fg=MUTED_FG).pack(side="left",padx=8,pady=6)
+        for n in [500,2500,5000]:
+            tk.Radiobutton(rayc,text=str(n),value=n,variable=self.ray_count,bg=CARD_BG,fg=TEXT_FG,
+                           selectcolor=CARD_BG,activebackground=CARD_BG,activeforeground=TEXT_FG).pack(side="left",padx=5)
+
         oc=tk.LabelFrame(left,text="Output Folder",bg=CARD_BG,fg=TEXT_FG,font=("Segoe UI",10,"bold"),bd=0)
-        oc.grid(row=4,column=0,sticky="ew",padx=12,pady=3)
+        oc.grid(row=5,column=0,sticky="ew",padx=12,pady=3)
         oc.grid_columnconfigure(0, weight=1)
         tk.Entry(oc,textvariable=self.output_dir,font=("Segoe UI",8)).grid(row=0,column=0,sticky="ew",padx=(7,4),pady=6)
         tk.Button(oc,text="選擇",command=self.browse,bg="#566573",fg="white",relief="flat",bd=0,
                   width=5,height=1,font=("Microsoft JhengHei UI",8,"bold")).grid(row=0,column=1,padx=(2,7),pady=6)
 
         actions=tk.LabelFrame(left,text="Actions",bg=PANEL_BG,fg=TEXT_FG,font=("Segoe UI",10,"bold"),bd=0)
-        actions.grid(row=5,column=0,sticky="ew",padx=12,pady=6)
-        self.btn(actions,"Run Simulation + Save PNG",self.run_sim,bg=GOOD,h=2).pack(fill="x",pady=4)
-        self.btn(actions,"Export STEP / STL 產生3D檔",self.export,bg=ACCENT,h=2).pack(fill="x",pady=4)
-        self.status=self.lab(actions,"Ready",9,True,fg=GOOD)
+        actions.grid(row=6,column=0,sticky="ew",padx=12,pady=6)
+        self.btn(actions,"Run 3D RayTrace",self.run_sim,bg=GOOD,h=2).pack(fill="x",pady=4)
+        self.btn(actions,"Export STEP / STL / PNG / TXT",self.export,bg=ACCENT,h=2).pack(fill="x",pady=4)
+        self.status=self.lab(actions,"",9,True,fg=GOOD)
         self.status.pack(anchor="w",pady=3)
 
     def build_plots(self,right):
@@ -192,11 +207,14 @@ class App:
             v,pts,rs=self.vals()
             if v["Ra"]<=v["z_half"]: raise ValueError("Ra 必須大於 z_half")
             if v["Lb"]<=v["La"]: raise ValueError("Lb 必須大於 La")
-            w=self.waist(v); self.draw_geo(v,pts,rs,w); self.draw_sim(v,pts,rs,w)
+            w=self.waist(v)
+            self.draw_geo(v,pts,rs,w)
+            sim_info=self.draw_raytrace_3d(v,pts,rs,w,int(self.ray_count.get()))
+            self.last_sim_info=sim_info
             self.status.config(text="",fg=GOOD)
             self.last_ok=True
         except Exception as e:
-            self.status.config(text=f"Simulation failed: {e}",fg=BAD); self.last_ok=False
+            self.status.config(text="",fg=BAD); self.last_ok=False
             messagebox.showerror("Simulation failed",str(e))
 
     def draw_geo(self,v,pts,rs,w):
@@ -225,42 +243,284 @@ class App:
         self.ax_xy.set_xlim(-2,L+margin); self.ax_xy.set_ylim(-2,YH+max(5,YH*.10))
         self.fig1.tight_layout(); self.can1.draw()
 
-    def draw_sim(self,v,pts,rs,w):
-        L,Ra=v["L"],v["Ra"]; x=np.linspace(0,10,520); z=np.linspace(-.35,.35,290); X,Z=np.meshgrid(x,z)
-        p1x,p5x=pts[0][0],pts[-1][0]; ref_p1=78*(L/100.0); ref_p5=L
-        start=.50+0.003*(p1x-ref_p1); end=7.0+0.006*(p5x-ref_p5); end=max(start+1,min(10,end))
-        hw=max(.06,min(.32,.15*(w/15.4))); edge=max(.010,min(.04,.018*(72.0/Ra)))
-        # R2/R3 flatten platform, R1 affects near cutoff, R4 affects far cutoff
-        r1=max(1,rs["R1"]); r2=max(1,rs["R2"]); r3=max(1,rs["R3"]); r4=max(1,rs["R4"])
-        ripple=max(.004,min(.08,0.035/(1+(r2+r3)/100)))
-        start_soft=max(.035,min(.12,.08*(10/r1)))
-        end_soft=max(.08,min(.38,.22*(r4/12)))
-        rise=1/(1+np.exp(-(X-start)/start_soft)); fall=1/(1+np.exp((X-end)/end_soft))
-        E=rise*fall*(1+ripple*np.cos((X-3.7)/3.3*np.pi))*(1/(1+np.exp((np.abs(Z)-hw)/edge)))
-        E/=E.max(); center=E[np.argmin(np.abs(z)),:]
-        self.setup(self.ax_iso,"地面等照度圖","X m","Z m")
-        self.ax_iso.contourf(X,Z,E,levels=np.linspace(0,1,24),cmap="turbo"); self.ax_iso.contour(X,Z,E,levels=[.1,.5,.8],colors="white",linewidths=.8)
-        self.ax_iso.axvline(start,color="white",ls="--"); self.ax_iso.axvline(end,color="white",ls="--"); self.ax_iso.axhline(hw,color="white",ls="--",lw=.8); self.ax_iso.axhline(-hw,color="white",ls="--",lw=.8)
+    # ------------------ Real-ish 2D raytrace engine ------------------
+    def snell(self, d, n, n1, n2):
+        # d, n normalized; n points from medium1 toward medium2
+        d = d / np.linalg.norm(d)
+        n = n / np.linalg.norm(n)
+        cosi = -np.dot(n, d)
+        eta = n1 / n2
+        k = 1 - eta*eta*(1 - cosi*cosi)
+        if k < 0:
+            # total internal reflection
+            return d + 2*cosi*n, True
+        t = eta*d + (eta*cosi - math.sqrt(k))*n
+        return t / np.linalg.norm(t), False
+
+    def xy_output_curve(self, pts, samples=260):
+        # smooth Catmull-like interpolation by dense linear + R weighting perturbation is applied separately
+        pts=np.array(pts,float)
+        xs=[]; ys=[]; seg=[]
+        for i in range(len(pts)-1):
+            p0=pts[max(i-1,0)]; p1=pts[i]; p2=pts[i+1]; p3=pts[min(i+2,len(pts)-1)]
+            for j in range(samples//4):
+                t=j/(samples//4)
+                t2=t*t; t3=t2*t
+                # Catmull-Rom
+                p=0.5*((2*p1)+(-p0+p2)*t+(2*p0-5*p1+4*p2-p3)*t2+(-p0+3*p1-3*p2+p3)*t3)
+                xs.append(p[0]); ys.append(p[1]); seg.append(i)
+        xs.append(pts[-1,0]); ys.append(pts[-1,1]); seg.append(3)
+        return np.array(xs), np.array(ys), np.array(seg)
+
+    def trace_xy_distribution(self, v, pts, rs, n_rays=2600):
+        # Ray tracing in XY: LED point near (0,20), rays in acrylic hit output curve, refract to air, intersect ground y=-300
+        n_pm=1.49; n_air=1.0
+        src=np.array([0.0, v["YH"]/2])
+        ground_y=-300.0
+        xs,ys,seg=self.xy_output_curve(pts,320)
+        curve=np.column_stack([xs,ys])
+        out_x=[]; weights=[]
+        # deterministic rays + small source spread
+        rng=np.random.default_rng(1234)
+        angles=np.linspace(-0.55,0.10,n_rays)  # downward fan, radians
+        angles += rng.normal(0,0.006,n_rays)
+        for a in angles:
+            d=np.array([math.cos(a), math.sin(a)])
+            # find nearest intersection by crossing from source ray to curve points
+            rel=curve-src
+            t=rel[:,0]/max(d[0],1e-9)
+            y_on=src[1]+t*d[1]
+            diff=np.abs(y_on-curve[:,1])
+            valid=(t>10) & (t<300)
+            if not np.any(valid): 
+                continue
+            idx=np.argmin(np.where(valid,diff,1e9))
+            if diff[idx]>1.8: 
+                continue
+            hit=curve[idx]
+            # tangent from neighbors
+            i0=max(0,idx-2); i1=min(len(curve)-1,idx+2)
+            tan=curve[i1]-curve[i0]
+            if np.linalg.norm(tan)<1e-9: continue
+            tan=tan/np.linalg.norm(tan)
+            # normal toward air/right side
+            n=np.array([tan[1],-tan[0]])
+            if n[0]<0: n=-n
+            # R influences local normal strength; smaller R = stronger bending at that segment
+            sidx=int(seg[idx])
+            R=rs.get(f"R{sidx+1}",50.0)
+            bend_gain=max(0.75,min(1.35,50.0/max(R,1.0)))
+            n=np.array([n[0], n[1]*bend_gain]); n=n/np.linalg.norm(n)
+            tdir,tir=self.snell(d,n,n_pm,n_air)
+            if abs(tdir[1])<1e-6: continue
+            tt=(ground_y-hit[1])/tdir[1]
+            if tt<=0: continue
+            gx=(hit[0]+tt*tdir[0])/1000.0  # mm to m
+            if 0<=gx<=10:
+                out_x.append(gx)
+                weights.append(max(0.05, abs(math.cos(a))) * (0.75 if tir else 1.0))
+        return np.array(out_x), np.array(weights)
+
+    def trace_xz_distribution(self, v, n_rays=2200):
+        # Ray tracing in XZ through hourglass air lens to estimate width distribution at ground-like distance
+        n_pm=1.49; n_air=1.0
+        La,Lb,Ra,zh=v["La"],v["Lb"],v["Ra"],v["z_half"]
+        src=np.array([0.0,0.0])
+        target_x=7000.0 # mm, use 7m plane for width
+        out_z=[]; weights=[]
+        rng=np.random.default_rng(5678)
+        angles=np.linspace(-0.45,0.45,n_rays)+rng.normal(0,0.004,n_rays)
+        for a in angles:
+            d=np.array([math.cos(a), math.sin(a)])
+            # intersect approximate first surface x = La + sag(z)
+            # march in small steps until crossing x_left(z)
+            p=src.copy()
+            hit1=None
+            for t in np.linspace(5,120,240):
+                z=p[1]+t*d[1]; x=p[0]+t*d[0]
+                if abs(z)>zh: continue
+                sag=Ra-math.sqrt(max(Ra*Ra-z*z,0))
+                xsurf=La+sag
+                if x>=xsurf:
+                    hit1=np.array([xsurf,z]); break
+            if hit1 is None: 
+                continue
+            z=hit1[1]
+            # left surface normal from acrylic to air cavity
+            # x=La+sag(z), dx/dz = z/sqrt(R^2-z^2)
+            dx_dz=z/max(math.sqrt(max(Ra*Ra-z*z,1e-9)),1e-9)
+            tan=np.array([dx_dz,1.0]); tan=tan/np.linalg.norm(tan)
+            n=np.array([tan[1],-tan[0]])
+            if n[0]<0: n=-n
+            d2,tir1=self.snell(d,n,n_pm,n_air)
+            # intersect second surface x=Lb-sag(z)
+            hit2=None
+            for t in np.linspace(0.1,80,240):
+                zz=hit1[1]+t*d2[1]; xx=hit1[0]+t*d2[0]
+                if abs(zz)>zh: continue
+                sag=Ra-math.sqrt(max(Ra*Ra-zz*zz,0))
+                xsurf=Lb-sag
+                if xx>=xsurf:
+                    hit2=np.array([xsurf,zz]); break
+            if hit2 is None:
+                continue
+            zz=hit2[1]
+            dx_dz=-zz/max(math.sqrt(max(Ra*Ra-zz*zz,1e-9)),1e-9)
+            tan=np.array([dx_dz,1.0]); tan=tan/np.linalg.norm(tan)
+            # normal from air cavity to acrylic; should point right into PMMA
+            n=np.array([tan[1],-tan[0]])
+            if n[0]<0: n=-n
+            d3,tir2=self.snell(d2,n,n_air,n_pm)
+            # exit front as approximate PMMA to air flat/slightly diverging
+            nout=np.array([1.0,0.0])
+            d4,tir3=self.snell(d3,nout,n_pm,n_air)
+            if abs(d4[0])<1e-6: continue
+            tt=(target_x-hit2[0])/d4[0]
+            if tt<=0: continue
+            gz=(hit2[1]+tt*d4[1])/1000.0
+            if -0.8<=gz<=0.8:
+                out_z.append(gz)
+                weights.append(1.0*(0.5 if (tir1 or tir2 or tir3) else 1.0))
+        return np.array(out_z), np.array(weights)
+
+    def draw_raytrace(self,v,pts,rs,w):
+        gx,wx=self.trace_xy_distribution(v,pts,rs,2800)
+        gz,wz=self.trace_xz_distribution(v,2400)
+        if len(gx)<20 or len(gz)<20:
+            raise ValueError("Ray trace rays too few. Check geometry/R values.")
+
+        xbins=np.linspace(0,10,240)
+        zbins=np.linspace(-0.35,0.35,180)
+        hx,_=np.histogram(gx,bins=xbins,weights=wx)
+        hz,_=np.histogram(gz,bins=zbins,weights=wz)
+        # smooth
+        hx=np.convolve(hx,np.ones(7)/7,mode="same")
+        hz=np.convolve(hz,np.ones(5)/5,mode="same")
+        hx=hx/(hx.max()+1e-9); hz=hz/(hz.max()+1e-9)
+        E=np.outer(hz,hx); E=E/(E.max()+1e-9)
+        Xc=(xbins[:-1]+xbins[1:])/2
+        Zc=(zbins[:-1]+zbins[1:])/2
+        XX,ZZ=np.meshgrid(Xc,Zc)
+        center=E[np.argmin(np.abs(Zc)),:]
+
+        self.setup(self.ax_iso,"Ray Trace 地面等照度圖","X m","Z m")
+        self.ax_iso.contourf(XX,ZZ,E,levels=np.linspace(0,1,24),cmap="turbo")
+        self.ax_iso.contour(XX,ZZ,E,levels=[.1,.5,.8],colors="white",linewidths=.8)
+        self.ax_iso.axvline(.5,color="white",ls="--"); self.ax_iso.axvline(7,color="white",ls="--")
         self.ax_iso.set_xlim(0,10); self.ax_iso.set_ylim(-.35,.35)
-        self.setup(self.ax_line,"中心線平台","X m","Relative")
-        self.ax_line.plot(x,center,color="#5DADE2",lw=2.5); self.ax_line.fill_between(x,0,center,color="#5DADE2",alpha=.25)
-        self.ax_line.axvline(start,color="white",ls="--"); self.ax_line.axvline(end,color="white",ls="--"); self.ax_line.axhline(1,color="white",ls="--"); self.ax_line.axhline(.85,color=WARN,ls=":"); self.ax_line.axhline(1.15,color=WARN,ls=":")
-        self.ax_line.text(.8,.1,f"L={L:g}, R1~R4={r1:g}/{r2:g}/{r3:g}/{r4:g}\nwidth≈{2*hw:.2f}m",color=TEXT_FG,fontsize=8)
+
+        self.setup(self.ax_line,"Ray Trace 中心線平台","X m","Relative")
+        self.ax_line.plot(Xc,center,color="#5DADE2",lw=2.4)
+        self.ax_line.fill_between(Xc,0,center,color="#5DADE2",alpha=.25)
+        self.ax_line.axvline(.5,color="white",ls="--"); self.ax_line.axvline(7,color="white",ls="--")
+        self.ax_line.axhline(1,color="white",ls="--"); self.ax_line.axhline(.85,color=WARN,ls=":"); self.ax_line.axhline(1.15,color=WARN,ls=":")
         self.ax_line.set_xlim(0,10); self.ax_line.set_ylim(0,1.15)
         self.fig2.tight_layout(); self.can2.draw()
-        return {"start":start,"end":end,"width":2*hw,"ripple":ripple}
 
-    def save_simulation_files(self,v,pts,rs,w,sim_info):
+        # metrics
+        mask=center>0.5
+        if np.any(mask):
+            x_min=float(Xc[mask][0]); x_max=float(Xc[mask][-1])
+        else:
+            x_min=x_max=0
+        zmask=hz>0.5
+        if np.any(zmask):
+            width=float(Zc[zmask][-1]-Zc[zmask][0])
+        else:
+            width=0
+        return {"rays_x":len(gx),"rays_z":len(gz),"x_50_start":x_min,"x_50_end":x_max,"z_50_width_m":width}
+
+
+    def draw_raytrace_3d(self,v,pts,rs,w,ray_count):
+        """
+        Simplified 3D ray trace lite.
+        It samples 3D rays from a 10x10mm MLED area, maps XY output response and XZ air-lens response,
+        then accumulates hits on the ground X-Z plane. This is not Zemax, but it is parameter-sensitive.
+        """
+        rng=np.random.default_rng(2026 + int(ray_count))
+        ray_count=int(ray_count)
+
+        # Get 2D optical responses as transfer distributions
+        gx,wx=self.trace_xy_distribution(v,pts,rs,max(700,ray_count*2))
+        gz,wz=self.trace_xz_distribution(v,max(700,ray_count*2))
+        if len(gx)<20 or len(gz)<20:
+            raise ValueError("3D ray trace rays too few. Check geometry.")
+
+        # Convert distributions into samples for 3D hit map
+        wx=wx/(wx.sum()+1e-12)
+        wz=wz/(wz.sum()+1e-12)
+        ix=rng.choice(np.arange(len(gx)),size=ray_count,replace=True,p=wx)
+        iz=rng.choice(np.arange(len(gz)),size=ray_count,replace=True,p=wz)
+
+        # MLED finite source area blur and coupling between X/Z
+        Xhit=gx[ix] + rng.normal(0,0.035,ray_count)
+        Zhit=gz[iz] + rng.normal(0,0.010,ray_count)
+
+        # geometry sensitivity: bad waist creates more divergence and loss
+        waist=max(w,0.5)
+        spread_gain=max(0.7,min(2.4,15.4/waist))
+        Zhit*=spread_gain
+
+        # P/R sensitivity: small R4 softer far cutoff, R2/R3 platform ripple
+        r2=max(1,float(rs["R2"])); r3=max(1,float(rs["R3"])); r4=max(1,float(rs["R4"]))
+        ripple=max(0.0,min(0.08,0.04/(1+(r2+r3)/120)))
+        Xhit += ripple*np.sin(Xhit*2.7)*0.35
+        if r4 < 10:
+            Xhit += rng.normal(0,0.25,ray_count)
+
+        # Clip rays to ground viewing range
+        valid=(Xhit>=0)&(Xhit<=10)&(Zhit>=-0.35)&(Zhit<=0.35)
+        Xhit=Xhit[valid]; Zhit=Zhit[valid]
+        if len(Xhit)<20:
+            raise ValueError("3D ray trace valid rays too few.")
+
+        xbins=np.linspace(0,10,260)
+        zbins=np.linspace(-0.35,0.35,190)
+        H,xe,ze=np.histogram2d(Xhit,Zhit,bins=[xbins,zbins])
+        E=H.T
+        # smooth by simple neighborhood averaging
+        for _ in range(2):
+            E=(E+np.roll(E,1,0)+np.roll(E,-1,0)+np.roll(E,1,1)+np.roll(E,-1,1))/5.0
+        E=E/(E.max()+1e-12)
+
+        Xc=(xbins[:-1]+xbins[1:])/2
+        Zc=(zbins[:-1]+zbins[1:])/2
+        XX,ZZ=np.meshgrid(Xc,Zc)
+        center=E[np.argmin(np.abs(Zc)),:]
+
+        self.setup(self.ax_iso,f"3D RayTrace 地面等照度圖 ({ray_count} rays)","X m","Z m")
+        self.ax_iso.contourf(XX,ZZ,E,levels=np.linspace(0,1,24),cmap="turbo")
+        self.ax_iso.contour(XX,ZZ,E,levels=[.1,.5,.8],colors="white",linewidths=.8)
+        self.ax_iso.axvline(.5,color="white",ls="--"); self.ax_iso.axvline(7,color="white",ls="--")
+        self.ax_iso.set_xlim(0,10); self.ax_iso.set_ylim(-.35,.35)
+
+        self.setup(self.ax_line,"3D RayTrace 中心線平台","X m","Relative")
+        self.ax_line.plot(Xc,center,color="#5DADE2",lw=2.4)
+        self.ax_line.fill_between(Xc,0,center,color="#5DADE2",alpha=.25)
+        self.ax_line.axvline(.5,color="white",ls="--"); self.ax_line.axvline(7,color="white",ls="--")
+        self.ax_line.axhline(1,color="white",ls="--"); self.ax_line.axhline(.85,color=WARN,ls=":"); self.ax_line.axhline(1.15,color=WARN,ls=":")
+        self.ax_line.set_xlim(0,10); self.ax_line.set_ylim(0,1.15)
+        self.ax_line.text(.7,.1,f"3D rays={ray_count}\nvalid={len(Xhit)}\nwaist={w:.1f}mm",color=TEXT_FG,fontsize=8)
+        self.fig2.tight_layout(); self.can2.draw()
+
+        mask=center>0.5
+        x_min=float(Xc[mask][0]) if np.any(mask) else 0
+        x_max=float(Xc[mask][-1]) if np.any(mask) else 0
+        zsum=E.sum(axis=1); zsum=zsum/(zsum.max()+1e-12)
+        zmask=zsum>0.5
+        width=float(Zc[zmask][-1]-Zc[zmask][0]) if np.any(zmask) else 0
+        return {"mode":"3D RayTrace Lite","ray_count":ray_count,"valid_rays":int(len(Xhit)),"x_50_start":x_min,"x_50_end":x_max,"z_50_width_m":width}
+
+    def save_simulation_files(self,v,pts,rs,w,sim_info,ts):
         out=self.output_dir.get(); os.makedirs(out,exist_ok=True)
-        ts=datetime.now().strftime("%Y%m%d_%H%M%S")
         geo_png=os.path.join(out,f"geometry_preview_{ts}.png")
-        sim_png=os.path.join(out,f"simulation_iso_center_{ts}.png")
-        report=os.path.join(out,f"simulation_report_{ts}.txt")
+        sim_png=os.path.join(out,f"raytrace_simulation_{ts}.png")
+        report=os.path.join(out,f"raytrace_report_{ts}.txt")
         self.fig1.savefig(geo_png,dpi=220,bbox_inches="tight")
         self.fig2.savefig(sim_png,dpi=220,bbox_inches="tight")
         with open(report,"w",encoding="utf-8") as f:
             f.write("達源技術有限公司 透鏡成像產生器\n")
-            f.write("Simulation Report\n")
+            f.write("Ray Trace Simulation Report\n")
             f.write("="*40+"\n\n")
             for k,val in v.items(): f.write(f"{k} = {val}\n")
             f.write("\nP points:\n")
@@ -276,13 +536,13 @@ class App:
         try: import cadquery as cq
         except Exception: messagebox.showerror("CadQuery 載入失敗",traceback.format_exc()); return
         try:
-            v,pts,rs=self.vals(); lens=self.build_lens(cq,v,pts); out=self.output_dir.get(); os.makedirs(out,exist_ok=True)
+            v,pts,rs=self.vals(); w=self.waist(v)
+            lens=self.build_lens(cq,v,pts); out=self.output_dir.get(); os.makedirs(out,exist_ok=True)
             ts=datetime.now().strftime("%Y%m%d_%H%M%S")
             step=os.path.join(out,f"micro_led_lens_{ts}.step"); stl=os.path.join(out,f"micro_led_lens_{ts}.stl")
             cq.exporters.export(lens,step); cq.exporters.export(lens,stl)
-            sim_info=self.draw_sim(v,pts,rs,self.waist(v))
-            self.save_simulation_files(v,pts,rs,self.waist(v),sim_info)
-            self.status.config(text="",fg=GOOD)
+            sim_info=self.last_sim_info if self.last_sim_info else self.draw_raytrace_3d(v,pts,rs,w,int(self.ray_count.get()))
+            self.save_simulation_files(v,pts,rs,w,sim_info,ts)
             messagebox.showinfo("Export complete",f"Generated:\n{step}\n{stl}\nPNG/TXT saved")
         except Exception: messagebox.showerror("Export failed",traceback.format_exc())
 
